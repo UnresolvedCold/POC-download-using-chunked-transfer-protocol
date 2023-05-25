@@ -1,6 +1,5 @@
 # Download files via REST chunked transfer encoding
-
-Chunked transfer encoding is a perotocol to send data in chunks over HTTP.
+Chunked transfer encoding is a protocol to send data in chunks over HTTP.
 This allows us to transfer a large amount of data in chunks of small size.
 
 With chunked encoding, the server splits the response into a series of smaller "chunks" of data. Each chunk includes a size indicator followed by the actual chunk data. The size indicator specifies the length of the chunk data in bytes. The chunks are sent to the client one by one and can be processed by the client as they arrive.
@@ -9,7 +8,7 @@ Here, we will create a Python server that will send us a heuristic file in chunk
 
 ## Project structure
 
-The project is a Maven project at root containing a sub-directory for our python server. 
+The project is a Maven project at root containing a sub-directory for our Python server. 
 
 ```
 ❯ tree .
@@ -33,10 +32,10 @@ The project is a Maven project at root containing a sub-directory for our python
 
 ## Python server
 
-This is a flask server that exposes a `download` route. 
+This is a Flask server that exposes a `download` route. 
 
 For a POC, we will just send a particular file called 'heuristics' whenever a request is made to the server.
-Server will send the files in chunk of `1024` which can be configured as per your need. 
+The server will send the files in chunks of `1024` which can be configured as per your need. 
 
 ```python
 # Define the route
@@ -105,7 +104,7 @@ python python/server.py
 
 We can also use `curl` to check the header.
 
-The presence of `Transfer-Encoding: chunked` tells us that the server is using chunked protocol to send the data. 
+The presence of `Transfer-Encoding: chunked` tells us that the server is using the chunked protocol to send the data. 
 
 ```sh
 # curl the header
@@ -211,10 +210,10 @@ stat -f "%z" heuristics.bin
 md5 -r python/public/stream/data/heuristics.bin | awk '{print $1}'
 ```
 
-The output shows us that the files are downloaded in small small chunks like 27, 997 even though our client is reading a buffer of size 4096.
+The output shows us that the files are downloaded in small chunks like 27, 997 even though our client is reading a buffer of size 4096.
 This is because the server is sending chunks at the rate of 1024 bytes which is being consumed by the java program much faster. This is our first disadvantage of using chunk encoding where client has no control over the data transfer. Even though the client is faster, the download is dependent on the server configurations. 
 
-To solve this let's configure our python server to send 1 MB chunks instead of 1 KB. Restart your python server. 
+To solve this let's configure our Python server to send 1 MB chunks instead of 1 KB. Restart your python server. 
 
 ```diff
     file_path = file_dir + file_name
@@ -237,11 +236,11 @@ mvn exec:java -Dexec.mainClass="com.gor.poc.FileDownloader"
 # 4096 bytes read
 ```
 
-Now the file transfer is much faster but still limited becasue the client is consuming the data at a slower rate that what server is sending. We would have increased the file transfer rate by configuring the client to read 1 MB. 
+Now the file transfer is much faster but still limited because the client is consuming the data at a slower rate that what server is sending. We would have increased the file transfer rate by configuring the client to read 1 MB. 
 
 Let's configure our client to use the exact bytes our server is sending. 
 
-For this, we'll send the chunk size used by our server as a header metadata. 
+For this, we'll send the chunk size used by our server as header metadata. 
 
 ```diff
     response.headers.set('Content-Disposition', 'attachment', filename=file_name)
@@ -337,8 +336,8 @@ mvn exec:java -Dexec.mainClass="com.gor.poc.FileDownloader"
 
 Looks like we are now using the full capability on the client side. 
 
-Now the only optimization we will require to send the files quickly is at the server side. 
-Let's log the time it takes to download the file while using different chunk size at server.
+Now the only optimization we will require to send the files quickly is on the server side. 
+Let's log the time it takes to download the file while using different chunk sizes on the server.
 
 | Chunk size | Time (in ms) |
 | --- | --- |
@@ -350,6 +349,7 @@ Let's log the time it takes to download the file while using different chunk siz
 | 256 MB | 740 |
 | 1 GB | 1169 |
 
-The time taken to transfer the file first decreases as we increase the chunk size and then starts increasing on increasing the chunk size. 
+The time taken to transfer the file first decreases as we increase the chunk size and then start increasing on increasing the chunk size. 
 
 The above analysis was done on Mac M1 - 2020 Model with 16 GB RAM (4 GB available). 
+
