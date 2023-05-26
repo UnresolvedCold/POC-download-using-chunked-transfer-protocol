@@ -1,4 +1,5 @@
 # Download files via REST chunked transfer encoding
+
 Chunked transfer encoding is a protocol to send data in chunks over HTTP.
 This allows us to transfer a large amount of data in chunks of small size.
 
@@ -8,10 +9,10 @@ Here, we will create a Python server that will send us a heuristic file in chunk
 
 ## Project structure
 
-The project is a Maven project at root containing a sub-directory for our Python server. 
+The project is a Maven project at root containing a sub-directory for our Python server.
 
-```
-❯ tree .
+```yaml
+> tree .
 .
 |-- README.MD
 |-- pom.xml
@@ -32,10 +33,10 @@ The project is a Maven project at root containing a sub-directory for our Python
 
 ## Python server
 
-This is a Flask server that exposes a `download` route. 
+This is a Flask server that exposes a `download` route.
 
 For a POC, we will just send a particular file called 'heuristics' whenever a request is made to the server.
-The server will send the files in chunks of `1024` which can be configured as per your need. 
+The server will send the files in chunks of `1024` which can be configured as per your need.
 
 ```python
 # Define the route
@@ -45,11 +46,11 @@ def download_file():
     file_dir = 'python/public/stream/data/'
     file_name = "heuristics.bin"
     file_path = file_dir + file_name
-
+    chunk_size = 1024
+    
     # Create chunks and yield them whenever required
     def generate():
-        # Chunks size of each chink of data
-        chunk_size = 1024 
+        # Chunks size of each chink of data     
         with open(file_path, 'rb') as file:
             while True:
                 chunk = file.read(chunk_size)
@@ -75,9 +76,11 @@ dd if=/dev/urandom of=python/public/stream/data/heuristics.bin bs=1G count=1
 # The below commands only works on Mac OS
 # Check the size of the file generated in bytes
 stat -f "%z" python/public/stream/data/heuristics.bin
+# 1073741824
 
 # Let's check the md5 of the file
 md5 -r python/public/stream/data/heuristics.bin | awk '{print $1}'
+# c5b8959732d3359791bcd06ca5a92dc2
 ```
 
 ```sh
@@ -104,13 +107,22 @@ python python/server.py
 
 We can also use `curl` to check the header.
 
-The presence of `Transfer-Encoding: chunked` tells us that the server is using the chunked protocol to send the data. 
+The presence of `Transfer-Encoding: chunked` tells us that the server is using the chunked protocol to send the data.
 
 ```sh
 # curl the header
 # -I asks for headers only 
 # -XGET says it to use GET method (can be omited as it is the default)
 curl -I -XGET "http://localhost:5000/download"
+
+# HTTP/1.1 200 OK
+# Server: Werkzeug/2.3.4 Python/3.10.10
+# Date: Fri, 26 May 2023 00:52:01 GMT
+# Content-Type: application/octet-stream
+# Content-Disposition: attachment; filename=heuristics.bin
+# X-Chunk-Size: 1024
+# Transfer-Encoding: chunked
+# Connection: close
 ```
 
 You can also use `curl` to download the file.
@@ -127,7 +139,10 @@ curl -O -J -L http://localhost:5000/download
 
 # Also let's verify the file size and md5 of the downloaded file
 stat -f "%z" heuristics.bin
+# 1073741824
+
 md5 -r heuristics.bin | awk '{print $1}'
+# c5b8959732d3359791bcd06ca5a92dc2
 ```
 
 You can match the `md5` of the server file and what we downloaded to check the successful file transfer.
@@ -210,10 +225,12 @@ stat -f "%z" heuristics.bin
 md5 -r python/public/stream/data/heuristics.bin | awk '{print $1}'
 ```
 
-The output shows us that the files are downloaded in small chunks like 27, 997 even though our client is reading a buffer of size 4096.
-This is because the server is sending chunks at the rate of 1024 bytes which is being consumed by the java program much faster. This is our first disadvantage of using chunk encoding where client has no control over the data transfer. Even though the client is faster, the download is dependent on the server configurations. 
+The output shows us that the files are downloaded in small chunks like 27 bytes, 997 bytes even though our client is reading a buffer of size 4096.
+This is because the server is sending chunks at the rate of 1024 bytes which is being consumed by the Java program much faster.
+This is one disadvantage of using chunk encoding where the client has no control over the data transfer.
+Even though the client is faster, the download is dependent on the server configurations.
 
-To solve this let's configure our Python server to send 1 MB chunks instead of 1 KB. Restart your python server. 
+To solve this let's configure our Python server to send 1 MB chunks instead of 1 KB. Restart your Python server.
 
 ```diff
     file_path = file_dir + file_name
@@ -236,19 +253,20 @@ mvn exec:java -Dexec.mainClass="com.gor.poc.FileDownloader"
 # 4096 bytes read
 ```
 
-Now the file transfer is much faster but still limited because the client is consuming the data at a slower rate that what server is sending. We would have increased the file transfer rate by configuring the client to read 1 MB. 
+Now the file transfer is much faster but still limited because the client is consuming the data at a slower rate than what the server is sending.
+We would have increased the file transfer rate by configuring the client to read 1 MB.
 
-Let's configure our client to use the exact bytes our server is sending. 
+Let's configure our client to use the exact bytes our server is sending.
 
-For this, we'll send the chunk size used by our server as header metadata. 
+For this, we'll send the chunk size used by our server as header metadata.
 
 ```diff
     response.headers.set('Content-Disposition', 'attachment', filename=file_name)
-+    response.headers.set('X-Chunk-Size', str(chunk_size))  # Add chunk size as a header
++   response.headers.set('X-Chunk-Size', str(chunk_size))  # Add chunk size as a header
 
 ```
 
-And on the Java side, we can read this header and set our buffer size to match the chunk size. 
+And on the Java side, we can read this header and set our buffer size to match the chunk size.
 
 ```diff
     // This is the REST API which will serve you the file
@@ -270,15 +288,15 @@ And on the Java side, we can read this header and set our buffer size to match t
         String filePath = savePath + "/" + fileName;
 
         // Get the chunk size from the response headers
-+        String chunkSizeHeader = connection.getHeaderField("X-Chunk-Size");
-+        int chunkSize = Integer.parseInt(chunkSizeHeader);
++       String chunkSizeHeader = connection.getHeaderField("X-Chunk-Size");
++       int chunkSize = Integer.parseInt(chunkSizeHeader);
 
         // Create an inout stream to download the file
         InputStream inputStream = connection.getInputStream();
         FileOutputStream outputStream = new FileOutputStream("./" + filePath);
 
         // Read the data in chunks and save it to the file
-+        byte[] buffer = new byte[chunkSize];
++       byte[] buffer = new byte[chunkSize];
         int bytesRead;
 
         // Check if the server supports chunked transfer encoding
@@ -332,11 +350,11 @@ mvn exec:java -Dexec.mainClass="com.gor.poc.FileDownloader"
 # 393112 bytes read
 ```
 
+Looks like we are now using the full capability on the client side.
+
 ## Analysis
 
-Looks like we are now using the full capability on the client side. 
-
-Now the only optimization we will require to send the files quickly is on the server side. 
+Now the only optimization we will require to send the files quickly is on the server side.
 Let's log the time it takes to download the file while using different chunk sizes on the server.
 
 | Chunk size | Time (in ms) |
@@ -349,7 +367,6 @@ Let's log the time it takes to download the file while using different chunk siz
 | 256 MB | 740 |
 | 1 GB | 1169 |
 
-The time taken to transfer the file first decreases as we increase the chunk size and then start increasing on increasing the chunk size. 
+The time taken to transfer the file first decreases as we increase the chunk size and then start increasing on increasing the chunk size.
 
-The above analysis was done on Mac M1 - 2020 Model with 16 GB RAM (4 GB available). 
-
+The above analysis was done on Mac M1 - 2020 Model with 16 GB RAM (4 GB available).
